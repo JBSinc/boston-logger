@@ -9,6 +9,7 @@ from .context_managers import (
     RequestDirection,
     RequestLogContext,
     log_incoming_request_event,
+    sanitize_request_data,
 )
 
 
@@ -41,7 +42,7 @@ class RequestResponseLoggerMiddleware:
                 # this will fail on form encoded POSTs, yeah?
                 req_data = json.loads(req_data)
             except json.JSONDecodeError:
-                req_data = {"raw_body": req_data}
+                req_data = {"raw_body": sanitize_request_data(request, req_data)}
 
         with RequestLogContext(
             request=request,
