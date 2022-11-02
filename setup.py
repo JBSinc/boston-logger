@@ -57,7 +57,7 @@ setup(
     python_requires=">=3.7, <4",
     install_requires=[
         "requests >= 2.18.0",
-        "configular >= 1.0.0",
+        "configular >= 1.1.0",
     ],
     extras_require={
         "django": ["Django >= 1.10"],

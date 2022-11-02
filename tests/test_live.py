@@ -1,9 +1,12 @@
+import os
 from logging.config import dictConfig
 
 import pytest
 import requests
 
-from boston_logger import requests_monkey_patch  # NOQA
+from boston_logger.config import config
+
+# from boston_logger import requests_monkey_patch  # NOQA
 from boston_logger.context_managers import (
     RequestDirection,
     RequestEdge,
@@ -30,6 +33,20 @@ def setup(module_mocker):
     module_mocker.patch(
         "boston_logger.config.config.ENABLE_SENSITIVE_PATHS_PROCESSOR", True
     )
+
+    # Test the reconfigure feature triggering monkey patch
+    orig_request = requests.request
+    assert config.ENABLE_REQUESTS_LOGGING is False
+    os.environ["BOSTON_LOGGER_ENABLE_REQUESTS_LOGGING"] = "yes"
+    config.reconfigure()
+    assert config.request_logging_enabled is True
+    assert requests.request is not orig_request
+    yield
+    os.environ.pop("BOSTON_LOGGER_ENABLE_REQUESTS_LOGGING")
+    config.reconfigure()
+    # The monkey patch can not be undone, use `ENABLE_OUTBOUND_REQUEST_LOGGING`
+    # To avoid logging after patching
+    assert requests.request is not orig_request
 
 
 def test_csv_api(caplog):

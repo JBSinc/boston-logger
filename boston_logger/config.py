@@ -18,13 +18,20 @@ _defaults = {
 
 
 class BlSettings(Settings):
+    @property
+    def request_logging_enabled(self):
+        try:
+            return str(self.ENABLE_REQUESTS_LOGGING).lower()[0] in ["y", "t"]
+        except Exception:
+            return False
+
     def reconfigure(self, *args, **kwargs):
         super().reconfigure(*args, **kwargs)
 
-        if self.ENABLE_REQUESTS_LOGGING:
+        if self.request_logging_enabled:
             from . import requests_monkey_patch  # noqa: F401
 
-        if not isinstance(config.MIDDLEWARE_BLOCKLIST, list):
+        if not isinstance(self.MIDDLEWARE_BLOCKLIST, list):
             raise ValueError("MIDDLEWARE_BLOCKLIST must be a list.")
 
 
