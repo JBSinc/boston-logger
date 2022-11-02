@@ -7,11 +7,10 @@ Smaht logging solutions for Django applications.
 Add the `RequestResponseLoggerMiddleware` middleware in your Django project's
 settings file to log all request/responses that Django handles.
 
-Import the `requests_monkey_patch` (or set the `ENABLE_REQUESTS_LOGGING` flag to
-`True` and add the middleware) to log all requests made through the `requests`
-library.
+Import `boston_logger.requests_monkey_patch` (or set the `ENABLE_REQUESTS_LOGGING` flag to
+`True`) to log all requests made through the `requests` library.
 
-## For settings file
+## For Django settings file
 
 If you want to configure in settings.py start with this:
 
@@ -50,7 +49,7 @@ LOGGING = {
             'level': 'DEBUG',
             'formatter': 'smart_formatter',
         },
-        'requests': {
+        'json': {
             'class': 'logging.StreamHandler',
             'level': 'DEBUG',
             'formatter': 'sumo_formatter',
@@ -62,7 +61,7 @@ LOGGING = {
             'level': os.environ.get('DJANGO_LOG_LEVEL', 'INFO'),
         },
         'boston_logger': {
-            'handlers': ['requests'],
+            'handlers': ['json'],
             'level': os.environ.get('DJANGO_LOG_LEVEL', 'DEBUG'),
             'propagate': False,
         },
@@ -72,20 +71,22 @@ LOGGING = {
 
 ## All config options, with defaults
 
-- `ENABLE_OUTBOUND_REQUEST_LOGGING`: True - Requests lib requests will be captured.
-- `ENABLE_LOGGING_MIDDLEWARE`: True - The middleware will log START/END events
-  for incoming requests.
-- `ENABLE_SENSITIVE_PATHS_PROCESSOR`: False - `sensitive_paths.SensitivePaths` objects will mask data
-- `ENABLE_REQUESTS_LOGGING`: False - Monkey patches requests lib so
-  `ENABLE_OUTBOUND_REQUEST_LOGGING` is possible
+- `ENABLE_OUTBOUND_REQUEST_LOGGING`: True - Requests lib requests will be
+  captured (Only if requests has been patched by the monkey patch, or
+  `ENABLE_REQUESTS_LOGGING` settings).
+- `ENABLE_LOGGING_MIDDLEWARE`: True - The django middleware will log START/END
+  events for incoming requests.
+- `ENABLE_SENSITIVE_PATHS_PROCESSOR`: False - `sensitive_paths.SensitivePaths`
+  objects will mask data
+- `ENABLE_REQUESTS_LOGGING`: False - Monkey patches requests lib at startup
 - `MAX_VERBOSE_OUTPUT_LENGTH`: 500 - Character length for request, header, and
   response data in SmartFormatter (console logs).
 - `MAX_SUMO_DATA_TO_LOG`: 0 - If greater than zero, truncate Sumo payloads to
   this size
-- `SUMO_METADATA`: {} - Included in all sumo logs, good to configure your
+- `SUMO_METADATA`: {} - Included in all sumo logs, good for configuring your
   category.
 - `MIDDLEWARE_BLOCKLIST`: [`admin:index`, `swagger-docs`] - Middleware will not
-  log requests that match these named URLs.
+  log requests that match these named URLs, must be a list.
 - `LOGGER_NAME`: `boston_logger` - Default name of the logger that all request logs
   will be sent to.
 - `LOG_RESPONSE_CONTENT`: False - Log the json responses the site is sending.
@@ -98,12 +99,47 @@ LOGGING = {
 ## Filtering Sensitive Data
 
 `ENABLE_SENSITIVE_PATHS_PROCESSOR` is set to `False` by default. If enabled, you
-must define filtering rules.
+must define filtering rules and activate them.
 
-One way rules can be defined is on the request via JSON in the
-`_apply_mask_processors` key. Setting this to `ALL` will mask all data. There
-are other options if you interact with the `SensitivePaths` class via the
-`add_mask_processor` method.
+Example:
+
+```python
+import requests
+from django.http import JsonResponse
+
+from boston_logger.context_managers import  SensitivePathContext
+from boston_logger.sensitive_paths import SensitivePaths, add_mask_processor
+
+# Global processors are applied to all log messages
+# A SensitivePaths instance is the only implemented processor at this time.
+# It will mask json and querystring data that matches the given paths.
+add_mask_processor(
+    "GlobalRuleName", SensitivePaths("obj1/key1", "list1"), is_global=True
+)
+
+# Non Global rules must be activated per log message
+add_mask_processor(
+    "SpecialRule", SensitivePaths("specific_obj1/key1"), is_global=False
+)
+
+with SensitivePathContext("SpecialRule"):
+    # SpecialRule will apply to logging triggered for this request
+    requests.get("https://example.com")
+# But not this one
+requests.get("https://example.com")
+
+def django_view(request):
+    response = JsonResponse({})
+    # SpecialRule will apply to logging triggered for this response
+    response._apply_mask_processors = ["SpecialRule"]
+    return response
+
+# "ALL" is a built-in rule which masks the entire payload
+with SensitivePathContext("ALL"):
+    # All request data, response data, and headers will be masked.
+    requests.get("https://example.com")
+```
+
 
 ## Reducing Log Size
 
@@ -146,7 +182,7 @@ setattr(request._request, '_request_notes', 'Some extra log data here.')
 ```
 
 To add notes to `OUTGOING` requests (i.e. you're using the `requests` library to
-send an internal request to another service/system), it's recommend you leverage
+send an external request to another service/system), it's recommend you leverage
 the `requests_monkey_patch` functionality described above.  This will allow you
 to specify a `notes` keyword argument which will attach your notes metadata onto
 the `OUTGOING` log message emitted by the `SumoFormatter`:

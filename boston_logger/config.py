@@ -16,10 +16,16 @@ _defaults = {
     "SHOW_NESTED_KEYS_IN_SENSITIVE_PATHS": False,
 }
 
-config = Settings(defaults=_defaults, prefix="BOSTON_LOGGER", loaders=[EnvironLoader])
 
-if config.ENABLE_REQUESTS_LOGGING:
-    from . import requests_monkey_patch  # noqa: F401
+class BlSettings(Settings):
+    def reconfigure(self, *args, **kwargs):
+        super().reconfigure(*args, **kwargs)
 
-if not isinstance(config.MIDDLEWARE_BLOCKLIST, list):
-    raise Exception("MIDDLEWARE_BLOCKLIST must be a list.")
+        if self.ENABLE_REQUESTS_LOGGING:
+            from . import requests_monkey_patch  # noqa: F401
+
+        if not isinstance(config.MIDDLEWARE_BLOCKLIST, list):
+            raise ValueError("MIDDLEWARE_BLOCKLIST must be a list.")
+
+
+config = BlSettings(defaults=_defaults, prefix="BOSTON_LOGGER", loaders=[EnvironLoader])
