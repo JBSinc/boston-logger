@@ -21,8 +21,7 @@ BOSTON_LOGGER = {
     "ENABLE_SENSITIVE_PATHS_PROCESSOR": False,
     "ENABLE_REQUESTS_LOGGING": True,  # Enable the requests monkey patch
     "MAX_VERBOSE_OUTPUT_LENGTH": 500,
-    "MAX_SUMO_DATA_TO_LOG": 0,  # Do not limit Sumo output, by default
-    "SUMO_METADATA": {},
+    "MAX_JSON_DATA_TO_LOG": 0,  # Do not limit json output size, by default
     "MIDDLEWARE_BLOCKLIST": ["admin:index", "swagger-docs"],
     "LOGGER_NAME": "boston_logger",
     "LOG_RESPONSE_CONTENT": False,
@@ -36,11 +35,21 @@ LOGGING = {
     'disable_existing_loggers': True,
     'version': 1,
     'formatters': {
-        'sumo_formatter': {
-            '()': 'boston_logger.logger.SumoFormatter',
+        'json_formatter': {
+            '()': 'boston_logger.logger.JsonFormatter',
+            'default_extra': {
+                '_logging_metadata': {
+                    'category': '/app/environment',
+                },
+            },
         },
         'smart_formatter': {
             '()': 'boston_logger.logger.SmartFormatter',
+        },
+    },
+    'filters': {
+        'request_edge': {
+            '()': 'boston_logger.logger.RequestEdgeEndFilter',
         },
     },
     'handlers': {
@@ -48,11 +57,13 @@ LOGGING = {
             'class': 'logging.StreamHandler',
             'level': 'DEBUG',
             'formatter': 'smart_formatter',
+            'filters': ['request_edge'],
         },
         'json': {
             'class': 'logging.StreamHandler',
             'level': 'DEBUG',
-            'formatter': 'sumo_formatter',
+            'formatter': 'json_formatter',
+            'filters': ['request_edge'],
         },
     },
     'loggers': {
@@ -81,10 +92,8 @@ LOGGING = {
 - `ENABLE_REQUESTS_LOGGING`: False - Monkey patches requests lib at startup
 - `MAX_VERBOSE_OUTPUT_LENGTH`: 500 - Character length for request, header, and
   response data in SmartFormatter (console logs).
-- `MAX_SUMO_DATA_TO_LOG`: 0 - If greater than zero, truncate Sumo payloads to
+- `MAX_JSON_DATA_TO_LOG`: 0 - If greater than zero, truncate json payloads to
   this size
-- `SUMO_METADATA`: {} - Included in all sumo logs, good for configuring your
-  category.
 - `MIDDLEWARE_BLOCKLIST`: [`admin:index`, `swagger-docs`] - Middleware will not
   log requests that match these named URLs, must be a list.
 - `LOGGER_NAME`: `boston_logger` - Default name of the logger that all request logs
@@ -143,7 +152,7 @@ with SensitivePathContext("ALL"):
 
 ## Reducing Log Size
 
-`MAX_SUMO_DATA_TO_LOG` tries to ensure that Sumo log messages don't get beyond
+`MAX_JSON_DATA_TO_LOG` tries to ensure that json log messages don't get beyond
 a certain size. If it is set to a non-zero value, we use it as a message
 length limit. If the message is too long, we truncate the response data.
 
@@ -170,7 +179,7 @@ dictionary).
 
 To add notes to an `INCOMING` request (i.e. one handled by the middleware),
 simply add an attribute to the WSGI request object called `_request_notes`; the
-`SumoFormatter` will include it in the JSON log output.
+`JsonFormatter` will include it in the JSON log output.
 
 **Note** that if you are using Django REST Framework, the incoming `request`
 object in your `ViewSet` or view method(s) will be an abstraction of the
@@ -185,7 +194,7 @@ To add notes to `OUTGOING` requests (i.e. you're using the `requests` library to
 send an external request to another service/system), it's recommend you leverage
 the `requests_monkey_patch` functionality described above.  This will allow you
 to specify a `notes` keyword argument which will attach your notes metadata onto
-the `OUTGOING` log message emitted by the `SumoFormatter`:
+the `OUTGOING` log message emitted by the `JsonFormatter`:
 
 ```python
 requests.post(url, data, notes='Some extra log data here.')

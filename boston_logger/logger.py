@@ -4,19 +4,19 @@ from decimal import Decimal
 from logging import Filter, Formatter
 
 
-class SumoFilter(Filter):
+class RequestEdgeEndFilter(Filter):
     def filter(self, record):
         from .context_managers import RequestEdge
 
         if not getattr(record, "smart", False):
-            # non-smart logs always go to Sumo
+            # non-smart logs always get recorded
             return True
 
-        # Smart logs only go to Sumo on END
+        # Smart logs only get recorded on END
         return record.edge == RequestEdge.END
 
 
-class SumoEncoder(json.JSONEncoder):
+class ObjectTypeEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, set):
             return {
@@ -46,12 +46,17 @@ class SumoEncoder(json.JSONEncoder):
         return super().default(obj)
 
 
-class SumoFormatter(Formatter):
+class JsonFormatter(Formatter):
+    def __init__(self, *args, **kwargs):
+        self.default_extra = kwargs.pop("default_extra", {})
+        super().__init__(*args, **kwargs)
+
     def format(self, record):
         from .config import config
 
         if getattr(record, "smart", False):
             log_data = {
+                **self.default_extra,
                 "msg": super().format(record),
                 "start_time": getattr(record, "start_time", ""),
                 "end_time": getattr(record, "end_time", ""),
@@ -63,16 +68,15 @@ class SumoFormatter(Formatter):
             }
         else:
             log_data = {
+                **self.default_extra,
                 "msg": super().format(record),
                 **getattr(record, "extra", {}),
             }
 
-        log_data["_sumo_metadata"] = config.SUMO_METADATA
-
-        resp = json.dumps(log_data, cls=SumoEncoder)
-        if config.MAX_SUMO_DATA_TO_LOG and len(resp) > config.MAX_SUMO_DATA_TO_LOG:
+        resp = json.dumps(log_data, cls=ObjectTypeEncoder)
+        if config.MAX_JSON_DATA_TO_LOG and len(resp) > config.MAX_JSON_DATA_TO_LOG:
             log_data["max_data_exceeded"] = True
-            truncate_length = config.MAX_SUMO_DATA_TO_LOG - 50
+            truncate_length = config.MAX_JSON_DATA_TO_LOG - 50
             response_obj = log_data.get("response")
             if response_obj and truncate_length > 0:
                 response_data = str(response_obj.get("data", ""))
@@ -82,7 +86,7 @@ class SumoFormatter(Formatter):
                         response_data[:truncate_length] + " **TRUNCATED**"
                     )
 
-            resp = json.dumps(log_data, cls=SumoEncoder)
+            resp = json.dumps(log_data, cls=ObjectTypeEncoder)
 
         return resp
 

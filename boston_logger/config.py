@@ -7,8 +7,7 @@ _defaults = {
     "ENABLE_SENSITIVE_PATHS_PROCESSOR": False,
     "ENABLE_REQUESTS_LOGGING": False,
     "MAX_VERBOSE_OUTPUT_LENGTH": 500,
-    "MAX_SUMO_DATA_TO_LOG": 0,  # Do not limit Sumo output, by default
-    "SUMO_METADATA": {},
+    "MAX_JSON_DATA_TO_LOG": 0,  # Do not limit json output, by default
     "MIDDLEWARE_BLOCKLIST": ["admin:index", "swagger-docs"],
     "LOGGER_NAME": "boston_logger",
     "LOG_RESPONSE_CONTENT": False,

@@ -6,13 +6,13 @@ from decimal import Decimal
 import pytest
 
 from boston_logger.config import config
-from boston_logger.logger import SumoEncoder, SumoFormatter
+from boston_logger.logger import JsonFormatter, ObjectTypeEncoder
 
 
 def test_format_limit():
     long_msg = "TEST " * 100
 
-    config.MAX_SUMO_DATA_TO_LOG = 500
+    config.MAX_JSON_DATA_TO_LOG = 500
 
     record = logging.makeLogRecord(
         {
@@ -22,7 +22,7 @@ def test_format_limit():
             "response": {"data": long_msg},
         }
     )
-    formatter = SumoFormatter()
+    formatter = JsonFormatter()
 
     fmt = formatter.format(record)
     fmt = json.loads(fmt)
@@ -30,14 +30,14 @@ def test_format_limit():
     assert fmt["request"] == long_msg
 
     # But because of the min 50, nothing get truncated
-    config.MAX_SUMO_DATA_TO_LOG = 5
+    config.MAX_JSON_DATA_TO_LOG = 5
 
     fmt = formatter.format(record)
     fmt = json.loads(fmt)
     assert fmt["max_data_exceeded"]
 
     # Trigger response truncation
-    config.MAX_SUMO_DATA_TO_LOG = 60
+    config.MAX_JSON_DATA_TO_LOG = 60
 
     fmt = formatter.format(record)
     fmt = json.loads(fmt)
@@ -45,7 +45,7 @@ def test_format_limit():
     assert fmt["response"]["data"].endswith("**TRUNCATED**")
 
     # Unlimited
-    config.MAX_SUMO_DATA_TO_LOG = 0
+    config.MAX_JSON_DATA_TO_LOG = 0
 
     fmt = formatter.format(record)
     fmt = json.loads(fmt)
@@ -101,7 +101,7 @@ def test_format_limit():
     ],
 )
 def test_json_encoder(obj, result):
-    resp = json.loads(json.dumps({"field": obj}, cls=SumoEncoder))
+    resp = json.loads(json.dumps({"field": obj}, cls=ObjectTypeEncoder))
     if result["type"]:
         assert resp["field"]["value"] == result["value"]
         assert resp["field"]["type"] == result["type"]
