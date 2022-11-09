@@ -54,24 +54,37 @@ class JsonFormatter(Formatter):
     def format(self, record):
         from .config import config
 
+        log_data = {
+            **self.default_extra,
+            # Normal tracing stuff
+            "filename": record.filename,
+            "funcName": record.funcName,
+            "levelname": record.levelname,
+            "levelno": record.levelno,
+            "lineno": record.lineno,
+            "module": record.module,
+        }
+
         if getattr(record, "smart", False):
-            log_data = {
-                **self.default_extra,
+            log_data.update(
+                {
+                    # Custom Fields
+                    "start_time": getattr(record, "start_time", ""),
+                    "end_time": getattr(record, "end_time", ""),
+                    "response_time_ms": getattr(record, "response_time_ms", ""),
+                    "request": record.request,
+                    "response": getattr(record, "response", None),
+                    "notes": getattr(record, "notes", None),
+                }
+            )
+
+        # Always fields
+        log_data.update(
+            {
                 "msg": super().format(record),
-                "start_time": getattr(record, "start_time", ""),
-                "end_time": getattr(record, "end_time", ""),
-                "response_time_ms": getattr(record, "response_time_ms", ""),
-                "request": record.request,
-                "response": getattr(record, "response", None),
-                "notes": getattr(record, "notes", None),
                 **getattr(record, "extra", {}),
             }
-        else:
-            log_data = {
-                **self.default_extra,
-                "msg": super().format(record),
-                **getattr(record, "extra", {}),
-            }
+        )
 
         resp = json.dumps(log_data, cls=ObjectTypeEncoder)
         if config.MAX_JSON_DATA_TO_LOG and len(resp) > config.MAX_JSON_DATA_TO_LOG:
