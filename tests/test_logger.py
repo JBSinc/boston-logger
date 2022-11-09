@@ -19,6 +19,7 @@ not_smart_keys = {
     "lineno",
     "module",
     "msg",
+    "name",
 }
 
 

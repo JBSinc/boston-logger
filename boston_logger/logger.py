@@ -54,15 +54,16 @@ class JsonFormatter(Formatter):
     def format(self, record):
         from .config import config
 
+        # Normal tracing stuff
         log_data = {
             **self.default_extra,
-            # Normal tracing stuff
             "filename": record.filename,
             "funcName": record.funcName,
             "levelname": record.levelname,
             "levelno": record.levelno,
             "lineno": record.lineno,
             "module": record.module,
+            "name": record.name,
         }
 
         if getattr(record, "smart", False):
