@@ -11,6 +11,28 @@ class Fake(object):
     pass
 
 
+not_smart_keys = {
+    "filename",
+    "funcName",
+    "levelname",
+    "levelno",
+    "lineno",
+    "module",
+    "msg",
+    "loggerName",
+}
+
+
+smart_keys = not_smart_keys | {
+    "end_time",
+    "notes",
+    "request",
+    "response",
+    "response_time_ms",
+    "start_time",
+}
+
+
 def test_filter_dumb():
     # All non-smart logs pass
     assert request_edge_filter.filter(Fake()) is True
@@ -33,18 +55,6 @@ def test_filter_smart_end():
     assert request_edge_filter.filter(record) is True
 
 
-smart_keys = {
-    "msg",
-    "start_time",
-    "end_time",
-    "response_time_ms",
-    "request",
-    "response",
-    "notes",
-    "key",
-}
-
-
 def test_json_smart_format():
     long_msg = "TEST " * 100
 
@@ -60,8 +70,8 @@ def test_json_smart_format():
     formatter = JsonFormatter()
 
     fmt = json.loads(formatter.format(record))
-    # Smart logs have expected keys
-    assert set(fmt.keys()) == smart_keys
+    # Smart logs have expected keys, including from extra
+    assert set(fmt.keys()) == smart_keys | {"key"}
 
 
 def test_json_smart_format_default_extra():
@@ -79,8 +89,8 @@ def test_json_smart_format_default_extra():
     formatter = JsonFormatter(default_extra={"_extra_key": "some value"})
 
     fmt = json.loads(formatter.format(record))
-    # Smart logs have expected keys
-    assert set(fmt.keys()) == smart_keys | {"_extra_key"}
+    # Smart logs have expected keys, including from extra
+    assert set(fmt.keys()) == smart_keys | {"key", "_extra_key"}
 
 
 def test_json_not_smart_format():
@@ -99,7 +109,7 @@ def test_json_not_smart_format():
 
     fmt = json.loads(formatter.format(record))
     # Non-smart logs only have msg and extra
-    assert set(fmt.keys()) == {"msg", "key"}
+    assert set(fmt.keys()) == not_smart_keys | {"key"}
 
 
 def test_json_not_smart_format_default_extra():
@@ -118,7 +128,7 @@ def test_json_not_smart_format_default_extra():
 
     fmt = json.loads(formatter.format(record))
     # Non-smart logs only have msg, extra, and default_extra
-    assert set(fmt.keys()) == {"msg", "key", "_extra_key"}
+    assert set(fmt.keys()) == not_smart_keys | {"key", "_extra_key"}
 
 
 def test_smart_format_not_smart():
