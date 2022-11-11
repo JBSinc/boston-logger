@@ -297,7 +297,7 @@ def log_incoming_request_event(
 
             # This is a django.http.HttpRequest
             request_info["remote_addr"] = request.META.get("REMOTE_ADDR", "")
-            request_info["url_scheme"] = request.META.get("wsgi.url_scheme", "https")
+            request_info["url_scheme"] = request.scheme
             request_info["path"] = request.path
             request_info["POST"] = sanitize_request_data(request, request.POST)
             request_info["GET"] = sanitize_request_data(request, request.GET)
