@@ -56,6 +56,7 @@ class JsonFormatter(Formatter):
 
         # Normal tracing stuff
         log_data = {
+            "timestamp": self.formatTime(record),
             **self.default_extra,
             "filename": record.filename,
             "funcName": record.funcName,
