@@ -12,6 +12,7 @@ class Fake(object):
 
 
 not_smart_keys = {
+    "timestamp",
     "filename",
     "funcName",
     "levelname",
