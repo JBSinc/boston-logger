@@ -1,4 +1,5 @@
 from copy import deepcopy
+from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 MASK_STRING = "*** masked ***"
 
@@ -184,3 +185,37 @@ def sanitize_data(data: dict, *mask_names):
         _mask_processors[mask_name].process(masked_data)
 
     return masked_data
+
+
+def sanitize_url(url: str, *mask_names):
+    """Return copy of url with query string that has been sanitized.
+
+    Global masks, the current SensitivePathContext and any positional args will
+    be applied.
+    """
+
+    try:
+        parts = urlparse(url)
+        return urlunparse(parts._replace(query=sanitize_string(parts.query)))
+    except ValueError:
+        from .config import config
+
+        return MASK_STRING if config.PREFER_TEXT_FALLBACK_MASKING else url
+
+
+def sanitize_string(data: str, *mask_names):
+    """Return copy of data sanitized as if it was application/x-www-form-urlencoded data
+
+    Global masks, the current SensitivePathContext and any positional args will
+    be applied.
+    """
+
+    try:
+        masked_query_dict = sanitize_data(
+            parse_qs(data, keep_blank_values=True, strict_parsing=True), *mask_names
+        )
+        return urlencode(masked_query_dict, doseq=True)
+    except ValueError:
+        from .config import config
+
+        return MASK_STRING if config.PREFER_TEXT_FALLBACK_MASKING else data

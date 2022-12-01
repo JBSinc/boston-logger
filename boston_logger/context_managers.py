@@ -5,10 +5,8 @@ import json
 import logging
 from datetime import datetime
 from enum import Enum
-from typing import Union
-from urllib.parse import parse_qs, urlencode
 
-from .sensitive_paths import MASK_STRING, sanitize_data
+from .sensitive_paths import sanitize_data, sanitize_string, sanitize_url
 
 RequestDirection = Enum("RequestDirection", "INCOMING OUTGOING")
 RequestEdge = Enum("RequestEdge", "START END")
@@ -33,6 +31,15 @@ class SensitivePathContext:
     @classmethod
     def get_mask_names(cls):
         return set(itertools.chain(*cls._mask_names))
+
+
+class SensitivePathRequestContext(SensitivePathContext):
+    def __init__(self, request):
+        # Should be a list or set of named mask processors already
+        # registered with sensitive_paths.add_mask_processor
+        # Or name of a single processor
+        mask_names = getattr(request, "_apply_mask_processors", [])
+        super().__init__(mask_names)
 
 
 class RequestLogContext:
@@ -110,38 +117,6 @@ def calculate_response_time_ms(start_time: datetime, end_time: datetime):
     return int((end_time - start_time).total_seconds() * 1000)
 
 
-def sanitize_request_data(request, data: Union[dict, str]):
-    is_str = False
-    if isinstance(data, str):
-        is_str = True
-        try:
-            # Dict[str: List[str]]
-            data = parse_qs(data, keep_blank_values=True, strict_parsing=True)
-        except ValueError:
-            from .config import config
-
-            return MASK_STRING if config.PREFER_TEXT_FALLBACK_MASKING else data
-
-    if not isinstance(data, dict):
-        # But how?!? We shouldn't be here
-        return data
-
-    # Should be a list or set of named mask processors already
-    # registered with sensitive_paths.add_mask_processor
-    # Or name of a single processor
-    mask_names = getattr(request, "_apply_mask_processors", [])
-
-    with SensitivePathContext(mask_names):
-        masked_data = sanitize_data(data)
-
-    if is_str:
-        # https://docs.python.org/3/library/urllib.parse.html#urllib.parse.urlencode
-        # doseq turns the list values back into multiple keys
-        masked_data = urlencode(masked_data, doseq=True)
-
-    return masked_data
-
-
 # Expects to handle only requests lib Requests
 def log_outgoing_request_event(
     *,
@@ -165,63 +140,55 @@ def log_outgoing_request_event(
     log_msg = None
     direction = RequestDirection.OUTGOING
 
-    if edge == RequestEdge.START:
-        # We can't get access to the prepared request on the START edge
-        # The monkey pass will provide us some information.
-        method = (method or "").upper()
-        request_info = {
-            "method": method,
-            "url": url,
-        }
-
-        log_msg = f"OUTGOING (start): {method} {url}"
-
-    else:
-        # assert edge == RequestEdge.END
-        if request:
+    with SensitivePathRequestContext(request):
+        if edge == RequestEdge.START:
+            # We can't get access to the prepared request on the START edge
+            # The monkey patch will provide us some information.
+            method = (method or "").upper()
             request_info = {
-                "method": request.method,
+                "method": method,
+                "url": url,
             }
 
-            # TODO: parse url to niceify the query string
-            request_info["url"] = request.url
-            request_info["path"] = request.path_url
-            request_info["headers"] = sanitize_request_data(
-                request,
-                dict(request.headers),
-            )
+            log_msg = f"OUTGOING (start): {method} {url}"
 
-            if request.body:
-                if isinstance(request.body, bytes):
-                    body = request.body.decode("utf-8", "replace")
-                else:
-                    body = request.body
+        else:
+            # assert edge == RequestEdge.END
+            if request:
+                request_info = {
+                    "method": request.method,
+                    "url": sanitize_url(request.url),
+                    "path": sanitize_url(request.path_url),
+                    "headers": sanitize_data(dict(request.headers)),
+                }
 
+                if request.body:
+                    if isinstance(request.body, bytes):
+                        body = request.body.decode("utf-8", "replace")
+                    else:
+                        body = request.body
+
+                    try:
+                        request_info["data"] = sanitize_data(json.loads(body))
+                    except json.JSONDecodeError:
+                        # But what is body? application/x-www-form-urlencoded I hope
+                        request_info["data"] = sanitize_string(body)
+
+                log_msg = f"OUTGOING (end): {request.method} {request.url}"
+
+            if response is not None:
+                log_msg += f" ({response.status_code})"
+
+                response_info = {
+                    "status_code": response.status_code,
+                }
+
+                response_text = getattr(response, "text", "")
                 try:
-                    request_info["data"] = sanitize_request_data(
-                        request, json.loads(body)
-                    )
+                    # See if its json data
+                    response_info["data"] = sanitize_data(json.loads(response_text))
                 except json.JSONDecodeError:
-                    # But what is body? application/x-www-form-urlencoded I hope
-                    request_info["data"] = sanitize_request_data(request, body)
-
-            log_msg = f"OUTGOING (end): {request.method} {request.url}"
-
-        if response is not None:
-            log_msg += f" ({response.status_code})"
-
-            response_info = {
-                "status_code": response.status_code,
-            }
-
-            response_text = getattr(response, "text", "")
-            try:
-                # See if its json data
-                response_info["data"] = sanitize_request_data(
-                    request, json.loads(response_text)
-                )
-            except json.JSONDecodeError:
-                response_info["data"] = sanitize_request_data(request, response_text)
+                    response_info["data"] = sanitize_string(response_text)
 
     if exc_info:
         log_func = logger.error
@@ -268,69 +235,55 @@ def log_incoming_request_event(
     log_msg = None
     direction = RequestDirection.INCOMING
 
-    if edge == RequestEdge.START:
+    with SensitivePathRequestContext(request):
         if request:
             request_info = {
                 "method": request.method,
                 "remote_addr": request.META["REMOTE_ADDR"],
                 "url_scheme": request.scheme,
-                "path": request.path,
-                "POST": sanitize_request_data(request, request.POST),
-                "GET": sanitize_request_data(request, request.GET),
-                "data": sanitize_request_data(request, request_data),
-                "headers": sanitize_request_data(
-                    request,
+                "path": sanitize_url(request.path),
+                "POST": sanitize_data(request.POST),
+                "GET": sanitize_data(request.GET),
+                "data": sanitize_data(request_data),
+                "headers": sanitize_data(
                     {h: v for h, v in request.META.items() if h.startswith("HTTP_")},
                 ),
             }
-            log_msg = f"INCOMING (start): {request.method} {request.path}"
-        else:
-            # Better to provide a request on a START flow
-            log_msg = f"INCOMING (start): {method} {url}"
 
-    else:
-        # assert edge == RequestEdge.END
-        if request:
-            request_info = {
-                "method": request.method,
-            }
-
-            # This is a django.http.HttpRequest
-            request_info["remote_addr"] = request.META.get("REMOTE_ADDR", "")
-            request_info["url_scheme"] = request.scheme
-            request_info["path"] = request.path
-            request_info["POST"] = sanitize_request_data(request, request.POST)
-            request_info["GET"] = sanitize_request_data(request, request.GET)
-            request_info["data"] = sanitize_request_data(request, request_data)
-            request_info["headers"] = sanitize_request_data(
-                request,
-                {h: v for h, v in request.META.items() if h.startswith("HTTP_")},
-            )
-
-            log_msg = f"INCOMING (end): {request.method} {request.path}"
-
-        if response is not None:
-            log_msg += f" ({response.status_code})"
-
-            response_info = {
-                "status_code": response.status_code,
-            }
-
-            # Set _log_data to False on any Django response object before your
-            # view returns it to prevent the response being logged.
-            if getattr(response, "_log_data", True):
-                response_headers = getattr(response, "headers", {})
-                is_json_response = (
-                    response_headers.get("Content-Type", "") == "application/json"
-                )
-
-                # We only ever log json responses
-                if config.LOG_RESPONSE_CONTENT and is_json_response:
-                    response_info["data"] = sanitize_request_data(
-                        request, json.loads(response.content)
-                    )
+        if edge == RequestEdge.START:
+            if request:
+                log_msg = f"INCOMING (start): {request.method} {request.path}"
             else:
-                response_info["data"] = {"NOT_LOGGED": "_log_data == False"}
+                # Better to provide a request on a START flow
+                log_msg = f"INCOMING (start): {method} {url}"
+
+        else:
+            # assert edge == RequestEdge.END
+            if request:
+                log_msg = f"INCOMING (end): {request.method} {request.path}"
+
+            if response is not None:
+                log_msg += f" ({response.status_code})"
+
+                response_info = {
+                    "status_code": response.status_code,
+                }
+
+                # Set _log_data to False on any Django response object before your
+                # view returns it to prevent the response being logged.
+                if getattr(response, "_log_data", True):
+                    response_headers = getattr(response, "headers", {})
+                    is_json_response = (
+                        response_headers.get("Content-Type", "") == "application/json"
+                    )
+
+                    # We only ever log json responses
+                    if config.LOG_RESPONSE_CONTENT and is_json_response:
+                        response_info["data"] = sanitize_data(
+                            json.loads(response.content)
+                        )
+                else:
+                    response_info["data"] = {"NOT_LOGGED": "_log_data == False"}
 
     if exc_info:
         log_func = logger.error
