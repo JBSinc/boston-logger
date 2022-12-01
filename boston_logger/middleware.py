@@ -9,8 +9,8 @@ from .context_managers import (
     RequestDirection,
     RequestLogContext,
     log_incoming_request_event,
-    sanitize_request_data,
 )
+from .sensitive_paths import sanitize_string
 
 
 class RequestResponseLoggerMiddleware:
@@ -42,7 +42,8 @@ class RequestResponseLoggerMiddleware:
                 # this will fail on form encoded POSTs, yeah?
                 req_data = json.loads(req_data)
             except json.JSONDecodeError:
-                req_data = {"raw_body": sanitize_request_data(request, req_data)}
+                mask_names = getattr(request, "_apply_mask_processors", [])
+                req_data = {"raw_body": sanitize_string(req_data, *mask_names)}
 
         with RequestLogContext(
             request=request,

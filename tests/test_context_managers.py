@@ -10,9 +10,9 @@ from boston_logger.context_managers import (
     RequestEdge,
     RequestLogContext,
     SensitivePathContext,
+    SensitivePathRequestContext,
     log_incoming_request_event,
     log_outgoing_request_event,
-    sanitize_request_data,
 )
 from boston_logger.sensitive_paths import (
     MASK_STRING,
@@ -20,6 +20,8 @@ from boston_logger.sensitive_paths import (
     add_mask_processor,
     remove_mask_processor,
     sanitize_data,
+    sanitize_string,
+    sanitize_url,
 )
 
 payload = {
@@ -146,7 +148,8 @@ class TestSensitivePathContext:
     def test_sanitize_request_data_dict(self):
         request = Fake()
         request._apply_mask_processors = "Pat1"
-        sanitized = sanitize_request_data(request, payload)
+        with SensitivePathRequestContext(request):
+            sanitized = sanitize_data(payload)
         assert sanitized["key1"] == MASK_STRING
         assert sanitized["key2"] != MASK_STRING
         assert sanitized["key3"] != MASK_STRING
@@ -155,27 +158,51 @@ class TestSensitivePathContext:
         mocker.patch("boston_logger.config.config.PREFER_TEXT_FALLBACK_MASKING", False)
         request = Fake()
         data = "not a query string"
-        sanitized = sanitize_request_data(request, data)
+        with SensitivePathRequestContext(request):
+            sanitized = sanitize_data(data)
         assert sanitized == data
 
     def test_sanitize_request_data_str_no_parse_mask(self, mocker):
         mocker.patch("boston_logger.config.config.PREFER_TEXT_FALLBACK_MASKING", True)
         request = Fake()
         data = "not a query string"
-        sanitized = sanitize_request_data(request, data)
+        with SensitivePathRequestContext(request):
+            sanitized = sanitize_string(data)
         assert sanitized == MASK_STRING
 
     def test_sanitize_request_data_str_parse(self):
         request = Fake()
         request._apply_mask_processors = "Pat1"
         data = "key1=hide&key2=show"
-        sanitized = sanitize_request_data(request, data)
+        with SensitivePathRequestContext(request):
+            sanitized = sanitize_string(data)
         # Masked and encoded
         assert sanitized == "key1=%2A%2A%2A+masked+%2A%2A%2A&key2=show"
 
+    def test_sanitize_request_data_url_parse(self):
+        request = Fake()
+        request._apply_mask_processors = "Pat1"
+        data = "http://example.com/?key1=hide&key2=show"
+        with SensitivePathRequestContext(request):
+            sanitized = sanitize_url(data)
+        # Masked and encoded
+        assert (
+            sanitized == "http://example.com/?key1=%2A%2A%2A+masked+%2A%2A%2A&key2=show"
+        )
+
+    def test_sanitize_request_data_url_no_parse(self, mocker):
+        mocker.patch("boston_logger.config.config.PREFER_TEXT_FALLBACK_MASKING", True)
+        # https://docs.python.org/3/library/urllib.parse.html#urllib.parse.urlparse
+        # Unmatched square brackets in the netloc attribute will raise a ValueError.
+        # Included for coverage of failed URL parsing
+        data = "http://exa[mple.com/?key1=hide&key2=show"
+        sanitized = sanitize_url(data)
+        assert sanitized == MASK_STRING
+
     def test_sanitize_request_data_absurd(self):
         request = Fake()
-        sanitized = sanitize_request_data(request, [])
+        with SensitivePathRequestContext(request):
+            sanitized = sanitize_data([])
         # Not a dict or str, just gets returned
         assert sanitized == []
 
