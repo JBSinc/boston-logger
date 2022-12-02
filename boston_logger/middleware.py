@@ -10,7 +10,7 @@ from .context_managers import (
     RequestLogContext,
     log_incoming_request_event,
 )
-from .sensitive_paths import sanitize_string
+from .sensitive_paths import sanitize_querystring
 
 
 class RequestResponseLoggerMiddleware:
@@ -43,7 +43,7 @@ class RequestResponseLoggerMiddleware:
                 req_data = json.loads(req_data)
             except json.JSONDecodeError:
                 mask_names = getattr(request, "_apply_mask_processors", [])
-                req_data = {"raw_body": sanitize_string(req_data, *mask_names)}
+                req_data = {"raw_body": sanitize_querystring(req_data, *mask_names)}
 
         with RequestLogContext(
             request=request,

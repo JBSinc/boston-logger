@@ -196,14 +196,14 @@ def sanitize_url(url: str, *mask_names):
 
     try:
         parts = urlparse(url)
-        return urlunparse(parts._replace(query=sanitize_string(parts.query)))
+        return urlunparse(parts._replace(query=sanitize_querystring(parts.query)))
     except ValueError:
         from .config import config
 
         return MASK_STRING if config.PREFER_TEXT_FALLBACK_MASKING else url
 
 
-def sanitize_string(data: str, *mask_names):
+def sanitize_querystring(data: str, *mask_names):
     """Return copy of data sanitized as if it was application/x-www-form-urlencoded data
 
     Global masks, the current SensitivePathContext and any positional args will
