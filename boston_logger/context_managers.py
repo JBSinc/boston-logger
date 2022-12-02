@@ -6,7 +6,7 @@ import logging
 from datetime import datetime
 from enum import Enum
 
-from .sensitive_paths import sanitize_data, sanitize_string, sanitize_url
+from .sensitive_paths import sanitize_data, sanitize_querystring, sanitize_url
 
 RequestDirection = Enum("RequestDirection", "INCOMING OUTGOING")
 RequestEdge = Enum("RequestEdge", "START END")
@@ -172,7 +172,7 @@ def log_outgoing_request_event(
                         request_info["data"] = sanitize_data(json.loads(body))
                     except json.JSONDecodeError:
                         # But what is body? application/x-www-form-urlencoded I hope
-                        request_info["data"] = sanitize_string(body)
+                        request_info["data"] = sanitize_querystring(body)
 
                 log_msg = f"OUTGOING (end): {request.method} {request.url}"
 
@@ -188,7 +188,7 @@ def log_outgoing_request_event(
                     # See if its json data
                     response_info["data"] = sanitize_data(json.loads(response_text))
                 except json.JSONDecodeError:
-                    response_info["data"] = sanitize_string(response_text)
+                    response_info["data"] = sanitize_querystring(response_text)
 
     if exc_info:
         log_func = logger.error

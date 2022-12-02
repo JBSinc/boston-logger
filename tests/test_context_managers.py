@@ -20,7 +20,7 @@ from boston_logger.sensitive_paths import (
     add_mask_processor,
     remove_mask_processor,
     sanitize_data,
-    sanitize_string,
+    sanitize_querystring,
     sanitize_url,
 )
 
@@ -167,7 +167,7 @@ class TestSensitivePathContext:
         request = Fake()
         data = "not a query string"
         with SensitivePathRequestContext(request):
-            sanitized = sanitize_string(data)
+            sanitized = sanitize_querystring(data)
         assert sanitized == MASK_STRING
 
     def test_sanitize_request_data_str_parse(self):
@@ -175,7 +175,7 @@ class TestSensitivePathContext:
         request._apply_mask_processors = "Pat1"
         data = "key1=hide&key2=show"
         with SensitivePathRequestContext(request):
-            sanitized = sanitize_string(data)
+            sanitized = sanitize_querystring(data)
         # Masked and encoded
         assert sanitized == "key1=%2A%2A%2A+masked+%2A%2A%2A&key2=show"
 
