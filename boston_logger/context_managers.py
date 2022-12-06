@@ -141,8 +141,8 @@ def log_outgoing_request_event(
     direction = RequestDirection.OUTGOING
 
     with SensitivePathRequestContext(request):
+        url = sanitize_url(url)
         if edge == RequestEdge.START:
-            url = sanitize_url(url)
             # We can't get access to the prepared request on the START edge
             # The monkey patch will provide us some information.
             method = (method or "").upper()
@@ -155,8 +155,8 @@ def log_outgoing_request_event(
 
         else:
             # assert edge == RequestEdge.END
-            url = sanitize_url(request.url)
             if request:
+                url = sanitize_url(request.url)
                 request_info = {
                     "method": request.method,
                     "url": url,
@@ -239,7 +239,7 @@ def log_incoming_request_event(
 
     with SensitivePathRequestContext(request):
         if request:
-            path = sanitize_url(path)
+            path = sanitize_url(request.path)
             request_info = {
                 "method": request.method,
                 "remote_addr": request.META["REMOTE_ADDR"],
@@ -251,8 +251,8 @@ def log_incoming_request_event(
                 "headers": sanitize_data(
                     {
                         h: sanitize_url(v) if h == "HTTP_REFERER" else v
-                        for h, v
-                        in request.META.items() if h.startswith("HTTP_")
+                        for h, v in request.META.items()
+                        if h.startswith("HTTP_")
                     },
                 ),
             }
@@ -262,6 +262,7 @@ def log_incoming_request_event(
                 log_msg = f"INCOMING (start): {request.method} {path}"
             else:
                 # Better to provide a request on a START flow
+                url = sanitize_url(url)
                 log_msg = f"INCOMING (start): {method} {url}"
 
         else:
