@@ -142,6 +142,7 @@ def log_outgoing_request_event(
 
     with SensitivePathRequestContext(request):
         if edge == RequestEdge.START:
+            url = sanitize_url(url)
             # We can't get access to the prepared request on the START edge
             # The monkey patch will provide us some information.
             method = (method or "").upper()
@@ -154,10 +155,11 @@ def log_outgoing_request_event(
 
         else:
             # assert edge == RequestEdge.END
+            url = sanitize_url(request.url)
             if request:
                 request_info = {
                     "method": request.method,
-                    "url": sanitize_url(request.url),
+                    "url": url,
                     "path": sanitize_url(request.path_url),
                     "headers": sanitize_data(dict(request.headers)),
                 }
@@ -174,7 +176,7 @@ def log_outgoing_request_event(
                         # But what is body? application/x-www-form-urlencoded I hope
                         request_info["data"] = sanitize_querystring(body)
 
-                log_msg = f"OUTGOING (end): {request.method} {request.url}"
+                log_msg = f"OUTGOING (end): {request.method} {url}"
 
             if response is not None:
                 log_msg += f" ({response.status_code})"
@@ -237,22 +239,27 @@ def log_incoming_request_event(
 
     with SensitivePathRequestContext(request):
         if request:
+            path = sanitize_url(path)
             request_info = {
                 "method": request.method,
                 "remote_addr": request.META["REMOTE_ADDR"],
                 "url_scheme": request.scheme,
-                "path": sanitize_url(request.path),
+                "path": path,
                 "POST": sanitize_data(request.POST),
                 "GET": sanitize_data(request.GET),
                 "data": sanitize_data(request_data),
                 "headers": sanitize_data(
-                    {h: v for h, v in request.META.items() if h.startswith("HTTP_")},
+                    {
+                        h: sanitize_url(v) if h == "HTTP_REFERER" else v
+                        for h, v
+                        in request.META.items() if h.startswith("HTTP_")
+                    },
                 ),
             }
 
         if edge == RequestEdge.START:
             if request:
-                log_msg = f"INCOMING (start): {request.method} {request.path}"
+                log_msg = f"INCOMING (start): {request.method} {path}"
             else:
                 # Better to provide a request on a START flow
                 log_msg = f"INCOMING (start): {method} {url}"
